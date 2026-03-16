@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ml">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arabic Letter Challenge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@700&family=Noto+Sans+Malayalam:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans Malayalam', sans-serif;
+            background-color: #f0fdf4;
+        }
+
+        .arabic-text {
+            font-family: 'Amiri', serif;
+        }
+
+        .letter-card {
+            transition: all 0.3s ease;
+        }
+
+        .active-player {
+            border: 4px solid #10b981;
+            transform: scale(1.05);
+            background-color: #ecfdf5;
+        }
+
+        .used-letter {
+            background-color: #fee2e2;
+            color: #991b1b;
+            text-decoration: line-through;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-md w-full bg-white rounded-3xl shadow-xl p-6 border-t-8 border-green-500">
+        <h1 class="text-2xl font-bold text-center text-green-700 mb-4">അറബിക് അക്ഷര കളി</h1>
+        
+        <!-- Player Selection -->
+        <div id="setup-screen" class="space-y-4">
+            <p class="text-center text-gray-600">എത്ര പേർ കളിക്കുന്നുണ്ട്?</p>
+            <div class="flex justify-center gap-4">
+                <button onclick="startGame(2)" class="bg-green-500 text-white px-6 py-2 rounded-full font-bold hover:bg-green-600">2 പേർ</button>
+                <button onclick="startGame(3)" class="bg-blue-500 text-white px-6 py-2 rounded-full font-bold hover:bg-blue-600">3 പേർ</button>
+                <button onclick="startGame(4)" class="bg-purple-500 text-white px-6 py-2 rounded-full font-bold hover:bg-purple-600">4 പേർ</button>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="hidden space-y-6">
+            <!-- Player Status -->
+            <div id="player-container" class="grid grid-cols-2 gap-3 mb-4">
+                <!-- Players injected here -->
+            </div>
+
+            <!-- Current Action Area -->
+            <div class="text-center p-6 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-300">
+                <p id="turn-indicator" class="text-lg font-bold text-gray-700 mb-2">കളിക്കാരൻ 1-ന്റെ ഊഴം</p>
+                <div id="current-letter-display" class="arabic-text text-700 text-7xl h-24 flex items-center justify-center text-green-600">
+                    ?
+                </div>
+                
+                <div class="mt-4 flex flex-col gap-2">
+                    <button id="mic-btn" onclick="startListening()" class="bg-red-500 text-white w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-600 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                        </svg>
+                        അക്ഷരം പറയൂ
+                    </button>
+                    <p class="text-xs text-gray-400">മൊബൈലിൽ മൈക്ക് ഐക്കൺ അമർത്തി അക്ഷരം പറയുക</p>
+                </div>
+            </div>
+
+            <!-- Message Area -->
+            <div id="message-box" class="hidden p-3 rounded-lg text-center font-medium"></div>
+
+            <!-- History / Bottom Column -->
+            <div>
+                <h3 class="font-bold text-gray-600 mb-2 border-b pb-1">പറഞ്ഞ അക്ഷരങ്ങൾ (History):</h3>
+                <div id="letter-history" class="flex flex-wrap gap-2 py-2 max-h-40 overflow-y-auto">
+                    <!-- History letters here -->
+                </div>
+            </div>
+
+            <button onclick="resetGame()" class="w-full text-gray-400 text-sm underline mt-4">ഗെയിം പുനരാരംഭിക്കുക</button>
+        </div>
+    </div>
+
+    <script>
+        let playerCount = 0;
+        let currentPlayer = 0;
+        let usedLetters = new Set();
+        let recognition;
+        
+        // Initialize Speech Recognition
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ar-SA'; // Arabic
+            recognition.interimResults = false;
+            
+            recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript.trim();
+                // Extract first character if it's a word
+                processLetter(text[0]);
+            };
+
+            recognition.onerror = () => {
+                showMessage("ശ്രദ്ധിക്കൂ: ശബ്ദം വ്യക്തമല്ല. വീണ്ടും ശ്രമിക്കൂ.", "error");
+            };
+        }
+
+        function startGame(num) {
+            playerCount = num;
+            currentPlayer = 0;
+            usedLetters.clear();
+            document.getElementById('setup-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            setupPlayersUI();
+            updateTurnUI();
+        }
+
+        function setupPlayersUI() {
+            const container = document.getElementById('player-container');
+            container.innerHTML = '';
+            for (let i = 0; i < playerCount; i++) {
+                const div = document.createElement('div');
+                div.id = `player-card-${i}`;
+                div.className = 'bg-white p-3 rounded-xl border-2 text-center font-bold shadow-sm';
+                div.innerHTML = `കളിക്കാരൻ ${i + 1}`;
+                container.appendChild(div);
+            }
+        }
+
+        function updateTurnUI() {
+            for (let i = 0; i < playerCount; i++) {
+                document.getElementById(`player-card-${i}`).classList.remove('active-player');
+            }
+            document.getElementById(`player-card-${currentPlayer}`).classList.add('active-player');
+            document.getElementById('turn-indicator').innerText = `കളിക്കാരൻ ${currentPlayer + 1}-ന്റെ ഊഴം`;
+        }
+
+        function startListening() {
+            if (!recognition) {
+                const manual = prompt("ഈ ബ്രൗസറിൽ മൈക്ക് ലഭ്യമല്ല. അക്ഷരം ടൈപ്പ് ചെയ്യുക:");
+                if (manual) processLetter(manual);
+                return;
+            }
+            recognition.start();
+            document.getElementById('mic-btn').innerText = "ശ്രദ്ധിക്കുന്നു...";
+            document.getElementById('mic-btn').classList.replace('bg-red-500', 'bg-yellow-500');
+        }
+
+        function processLetter(letter) {
+            // Reset button
+            document.getElementById('mic-btn').innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg> അക്ഷരം പറയൂ`;
+            document.getElementById('mic-btn').classList.replace('bg-yellow-500', 'bg-red-500');
+
+            // Regex to ensure it's an Arabic letter
+            const isArabic = /[\u0600-\u06FF]/.test(letter);
+
+            if (!isArabic) {
+                showMessage("അറബിക് അക്ഷരം മാത്രം പറയുക!", "error");
+                return;
+            }
+
+            if (usedLetters.has(letter)) {
+                showMessage(`"${letter}" മുൻപ് ഉപയോഗിച്ചതാണ്! വേറെ പറയുക.`, "error");
+                return;
+            }
+
+            // Success
+            usedLetters.add(letter);
+            document.getElementById('current-letter-display').innerText = letter;
+            addToHistory(letter);
+            showMessage(`ശരിയാണ്! "${letter}" ചേർത്തു.`, "success");
+
+            // Next Player
+            currentPlayer = (currentPlayer + 1) % playerCount;
+            setTimeout(updateTurnUI, 1000);
+        }
+
+        function addToHistory(letter) {
+            const history = document.getElementById('letter-history');
+            const span = document.createElement('span');
+            span.className = 'arabic-text bg-green-100 text-green-800 px-4 py-2 rounded-lg text-2xl shadow-sm border border-green-200';
+            span.innerText = letter;
+            history.prepend(span); // Add to start of column
+        }
+
+        function showMessage(msg, type) {
+            const box = document.getElementById('message-box');
+            box.innerText = msg;
+            box.className = `p-3 rounded-lg text-center font-medium ${type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`;
+            box.classList.remove('hidden');
+            setTimeout(() => box.classList.add('hidden'), 3000);
+        }
+
+        function resetGame() {
+            if (confirm("ഗെയിം റീസെറ്റ് ചെയ്യണോ?")) {
+                document.getElementById('setup-screen').classList.remove('hidden');
+                document.getElementById('game-screen').classList.add('hidden');
+                document.getElementById('letter-history').innerHTML = '';
+                document.getElementById('current-letter-display').innerText = '?';
+            }
+        }
+    </script>
+</body>
+</html>
